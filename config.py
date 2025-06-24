@@ -88,7 +88,7 @@ votemode = {}
 autoclean = []
 confirmer = {}
 
-
+https://files.catbox.moe/fcawaj.jpg = https://files.catbox.moe/x3gycd.jpg
 START_IMG_URL = getenv(
     "START_IMG_URL", "https://files.catbox.moe/fcawaj.jpg"
 )
