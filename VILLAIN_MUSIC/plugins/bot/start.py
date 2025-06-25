@@ -32,8 +32,7 @@ from config import BANNED_USERS
 from strings import get_string
 
 # Banner Image/Video
-NEXI_VID = ["https://files.catbox.moe/luxd67.jpg",
-            "https://files.catbox.moe/b8df53.jpg"]
+NEXI_VID = ["https://files.catbox.moe/0ni9ug.mp4"]
 
 
 @app.on_message(filters.command(["start"]) & filters.private & ~BANNED_USERS)
