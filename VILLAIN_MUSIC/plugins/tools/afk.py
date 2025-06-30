@@ -1,151 +1,103 @@
-import time, re
-from config import BOT_USERNAME
 from pyrogram.enums import MessageEntityType
-from pyrogram import filters
-from pyrogram.types import Message
+import re, time
+from config import BOT_USERNAME
 from VILLAIN_MUSIC import app
+from VILLAIN_MUSIC.mongo.afkdb import is_afk, remove_afk
 from VILLAIN_MUSIC.mongo.readable_time import get_readable_time
-from VILLAIN_MUSIC.mongo.afkdb import add_afk, is_afk, remove_afk
 
 
-@app.on_message(filters.command(["afk", "brb"], prefixes=["/", "!"]))
-async def active_afk(_, message: Message):
-    if message.sender_chat:
+@app.on_message(~filters.me & ~filters.bot & ~filters.via_bot, group=1)
+async def chat_watcher_func(_, message):
+    if message.sender_chat or not message.from_user:
         return
 
-    user = message.from_user
-    user_id = user.id
+    userid = message.from_user.id
+    user_name = message.from_user.first_name
 
-    # If already AFK → remove AFK
-    verifier, afk_data = await is_afk(user_id)
+    # === RETURN FROM AFK ===
+    verifier, afk_data = await is_afk(userid)
     if verifier:
-        await remove_afk(user_id)
+        await remove_afk(userid)
         try:
-            afktype = afk_data["type"]
             timeafk = afk_data["time"]
-            data = afk_data["data"]
-            reasonafk = afk_data["reason"]
-            seenago = get_readable_time((int(time.time() - timeafk)))
+            reason = afk_data.get("reason")
+            seenago = get_readable_time(int(time.time() - timeafk))
 
-            caption = f"**{user.first_name}** ɪs ʙᴀᴄᴋ ᴏɴʟɪɴᴇ ᴀɴᴅ ᴡᴀs ᴀᴡᴀʏ ғᴏʀ {seenago}"
-            if reasonafk:
-                caption += f"\n\nʀᴇᴀsᴏɴ: `{reasonafk}`"
+            return_msg = (
+                f"**{user_name}** 𝗂𝗌 𝗇𝗈𝗐 𝖻𝖺𝖼𝗄 𝗈𝗇𝗅𝗂𝗇𝖾!\n\n"
+                f"🕓 𝖶𝖺𝗌 𝖠𝖥𝖪 𝖿𝗈𝗋: {seenago}"
+            )
+            if reason:
+                return_msg += f"\n\n📌 𝖱𝖾𝖺𝗌𝗈𝗇: `{reason}`"
 
-            if afktype == "animation":
-                await message.reply_animation(data, caption=caption)
-            elif afktype == "photo":
-                await message.reply_photo(photo=f"downloads/{user_id}.jpg", caption=caption)
-            else:
-                await message.reply_text(caption)
+            await message.reply_text(return_msg)
+        except:
+            await message.reply_text(f"**{user_name}** 𝗂𝗌 𝗇𝗈𝗐 𝖻𝖺𝖼𝗄 𝗈𝗇𝗅𝗂𝗇𝖾!")
 
-        except Exception:
-            await message.reply_text(f"**{user.first_name}** ɪs ʙᴀᴄᴋ ᴏɴʟɪɴᴇ")
-        return
+    # === CHECK REPLIED USER ===
+    msg = ""
+    replied_user_id = 0
 
-    # --- Now Set AFK ---
-    details = {
-        "type": "text",
-        "time": time.time(),
-        "data": None,
-        "reason": None,
-    }
+    if message.reply_to_message and message.reply_to_message.from_user:
+        try:
+            replied_user = message.reply_to_message.from_user
+            replied_first = replied_user.first_name
+            replied_user_id = replied_user.id
+            verifier, data = await is_afk(replied_user_id)
+            if verifier:
+                timeafk = data["time"]
+                reason = data.get("reason")
+                seenago = get_readable_time(int(time.time() - timeafk))
 
-    # =========== CASE 1: Just /afk ============
-    if len(message.command) == 1 and not message.reply_to_message:
-        pass  # Already default
+                afkmsg = f"**{replied_first[:25]}** 𝗂𝗌 𝖠𝖥𝖪 𝗌𝗂𝗇𝖼𝖾 {seenago}"
+                if reason:
+                    afkmsg += f"\n\n📌 𝖱𝖾𝖺𝗌𝗈𝗇: `{reason}`"
 
-    # =========== CASE 2: /afk [reason] ============
-    elif len(message.command) > 1 and not message.reply_to_message:
-        reason = (message.text.split(None, 1)[1].strip())[:100]
+                msg += afkmsg + "\n\n"
+        except:
+            pass
 
-        # Block unwanted patterns (media/links/mentions)
-        if re.search(r"@|https?://|\.com|\.in|t\.me|\.jpg|\.png|\.gif|\.mp4|\[.*\]\(.*\)", reason):
-            await message.reply_text("❌ Only plain text is allowed in AFK reason.\nDon't send links, tags, or media.")
-            return
+    # === CHECK MENTIONS & TEXT MENTIONS ===
+    if message.entities:
+        message_text = message.text or message.caption or ""
+        for entity in message.entities:
+            if entity.type == MessageEntityType.MENTION:
+                try:
+                    username = message_text[entity.offset + 1: entity.offset + entity.length]
+                    user = await app.get_users(username)
+                    if user.id == replied_user_id:
+                        continue
+                    verifier, data = await is_afk(user.id)
+                    if verifier:
+                        timeafk = data["time"]
+                        reason = data.get("reason")
+                        seenago = get_readable_time(int(time.time() - timeafk))
+                        afkmsg = f"**{user.first_name[:25]}** 𝗂𝗌 𝖠𝖥𝖪 𝗌𝗂𝗇𝖼𝖾 {seenago}"
+                        if reason:
+                            afkmsg += f"\n\n📌 𝖱𝖾𝖺𝗌𝗈𝗇: `{reason}`"
+                        msg += afkmsg + "\n\n"
+                except:
+                    continue
 
-        if message.entities:
-            for entity in message.entities:
-                if entity.type not in [MessageEntityType.BOLD, MessageEntityType.ITALIC, MessageEntityType.CODE, MessageEntityType.PRE]:
-                    await message.reply_text("❌ Only plain text is allowed in AFK reason.\nFormatting or mentions are not supported.")
-                    return
+            elif entity.type == MessageEntityType.TEXT_MENTION:
+                try:
+                    user = entity.user
+                    if user.id == replied_user_id:
+                        continue
+                    verifier, data = await is_afk(user.id)
+                    if verifier:
+                        timeafk = data["time"]
+                        reason = data.get("reason")
+                        seenago = get_readable_time(int(time.time() - timeafk))
+                        afkmsg = f"**{user.first_name[:25]}** 𝗂𝗌 𝖠𝖥𝖪 𝗌𝗂𝗇𝖼𝖾 {seenago}"
+                        if reason:
+                            afkmsg += f"\n\n📌 𝖱𝖾𝖺𝗌𝗈𝗇: `{reason}`"
+                        msg += afkmsg + "\n\n"
+                except:
+                    continue
 
-        details = {
-            "type": "text_reason",
-            "time": time.time(),
-            "data": None,
-            "reason": reason,
-        }
-
-    # =========== CASE 3: /afk with replied animation ============
-    elif message.reply_to_message and message.reply_to_message.animation:
-        file_id = message.reply_to_message.animation.file_id
-        if len(message.command) == 1:
-            details = {
-                "type": "animation",
-                "time": time.time(),
-                "data": file_id,
-                "reason": None,
-            }
-        else:
-            reason = (message.text.split(None, 1)[1].strip())[:100]
-            if re.search(r"@|https?://|\.com|\.in|t\.me|\.jpg|\.png|\.gif|\.mp4|\[.*\]\(.*\)", reason):
-                await message.reply_text("❌ Only plain text is allowed in AFK reason.\nDon't send links or mentions.")
-                return
-            details = {
-                "type": "animation",
-                "time": time.time(),
-                "data": file_id,
-                "reason": reason,
-            }
-
-    # =========== CASE 4: /afk with replied photo ============
-    elif message.reply_to_message and message.reply_to_message.photo:
-        await app.download_media(message.reply_to_message, file_name=f"{user_id}.jpg")
-        if len(message.command) == 1:
-            details = {
-                "type": "photo",
-                "time": time.time(),
-                "data": None,
-                "reason": None,
-            }
-        else:
-            reason = (message.text.split(None, 1)[1].strip())[:100]
-            if re.search(r"@|https?://|\.com|\.in|t\.me|\.jpg|\.png|\.gif|\.mp4|\[.*\]\(.*\)", reason):
-                await message.reply_text("❌ Only plain text is allowed in AFK reason.\nDon't send links or mentions.")
-                return
-            details = {
-                "type": "photo",
-                "time": time.time(),
-                "data": None,
-                "reason": reason,
-            }
-
-    # =========== CASE 5: Replied Sticker ============
-    elif message.reply_to_message and message.reply_to_message.sticker:
-        if message.reply_to_message.sticker.is_animated:
-            details = {
-                "type": "text",
-                "time": time.time(),
-                "data": None,
-                "reason": None,
-            }
-        else:
-            await app.download_media(message.reply_to_message, file_name=f"{user_id}.jpg")
-            details = {
-                "type": "photo",
-                "time": time.time(),
-                "data": None,
-                "reason": None,
-            }
-
-    # =========== Default fallback ============
-    else:
-        details = {
-            "type": "text",
-            "time": time.time(),
-            "data": None,
-            "reason": None,
-        }
-
-    await add_afk(user_id, details)
-    await message.reply_text(f"💤 {user.first_name} is now AFK!")
+    if msg.strip():
+        try:
+            await message.reply_text(msg.strip(), disable_web_page_preview=True)
+        except:
+            pass
