@@ -4,7 +4,7 @@ from config import BOT_USERNAME
 from VILLAIN_MUSIC import app
 from VILLAIN_MUSIC.mongo.afkdb import is_afk, remove_afk
 from VILLAIN_MUSIC.mongo.readable_time import get_readable_time
-
+from pyrogram import filters
 
 @app.on_message(~filters.me & ~filters.bot & ~filters.via_bot, group=1)
 async def chat_watcher_func(_, message):
